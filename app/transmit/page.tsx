@@ -18,12 +18,14 @@ import {
   Radio,
   Info,
   Folder,
+  FileUp,
 } from "lucide-react";
 
 export default function TransmitPage() {
   const [file, setFile] = useState<File | null>(null);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Animation Controls
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
@@ -111,6 +113,75 @@ export default function TransmitPage() {
     seqRef.current = 0;
     setCurrentSeq(0);
     setIsPlaying(true);
+  };
+
+  // Drag and Drop Event Handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+
+    if (droppedFiles.length === 1) {
+      const singleFile = droppedFiles[0];
+      setFile(singleFile);
+      const metadata: FileMetadata = {
+        name: singleFile.name,
+        size: singleFile.size,
+        type: singleFile.type || "application/octet-stream",
+      };
+      setFileMetadata(metadata);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        if (arrayBuffer) {
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const newEncoder = new FountainEncoder(uint8Array, metadata, chunkSize);
+          setEncoder(newEncoder);
+          seqRef.current = 0;
+          setCurrentSeq(0);
+          setIsPlaying(true);
+        }
+      };
+      reader.readAsArrayBuffer(singleFile);
+    } else {
+      const zipData: Record<string, Uint8Array> = {};
+      for (const f of droppedFiles) {
+        const buf = new Uint8Array(await f.arrayBuffer());
+        zipData[f.name] = buf;
+      }
+      const zippedBytes = zipSync(zipData);
+      const mockFile = new File([zippedBytes], "dropped_files.zip", { type: "application/zip" });
+      setFile(mockFile);
+
+      const metadata: FileMetadata = {
+        name: "dropped_files.zip",
+        size: zippedBytes.length,
+        type: "application/zip",
+      };
+      setFileMetadata(metadata);
+
+      const newEncoder = new FountainEncoder(zippedBytes, metadata, chunkSize);
+      setEncoder(newEncoder);
+      seqRef.current = 0;
+      setCurrentSeq(0);
+      setIsPlaying(true);
+    }
   };
 
   // Re-initialize encoder when chunkSize changes
@@ -260,20 +331,35 @@ export default function TransmitPage() {
       </div>
 
       {!file ? (
-        /* File & Folder Upload Dropzone */
-        <div className="glass-panel p-12 rounded-2xl text-center space-y-6 border-2 border-dashed border-slate-700/80 hover:border-cyan-500/50 transition-all">
-          <div className="w-20 h-20 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
-            <Upload className="w-10 h-10 animate-bounce" />
+        /* Interactive Drag & Drop Upload Zone */
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`glass-panel p-10 sm:p-14 rounded-2xl text-center space-y-6 border-2 border-dashed transition-all duration-200 ${
+            isDragging
+              ? "border-cyan-400 bg-cyan-950/40 scale-[1.01] glow-cyan shadow-2xl"
+              : "border-slate-700/80 hover:border-cyan-500/50"
+          }`}
+        >
+          <div className="w-20 h-20 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400 transition-transform group-hover:scale-105">
+            {isDragging ? (
+              <FileUp className="w-10 h-10 animate-bounce text-cyan-300" />
+            ) : (
+              <Upload className="w-10 h-10 animate-bounce" />
+            )}
           </div>
 
           <div className="space-y-2 max-w-md mx-auto">
-            <h2 className="text-xl font-semibold">Select a file or folder to transmit</h2>
+            <h2 className="text-xl font-semibold">
+              {isDragging ? "Drop your file or folder here!" : "Drag & Drop files or folder here"}
+            </h2>
             <p className="text-slate-400 text-sm">
-              Upload single files or entire folders. The payload will be encoded into high-frequency optical QR droplets.
+              Drag and drop any file or folder directly into this box, or select using the buttons below.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
             <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-lg shadow-cyan-500/20 cursor-pointer transition-all">
               <Upload className="w-4 h-4" />
               <span>Choose File</span>
