@@ -19,6 +19,7 @@ import {
   Info,
   Folder,
   FileUp,
+  Palette,
 } from "lucide-react";
 
 export default function TransmitPage() {
@@ -29,10 +30,11 @@ export default function TransmitPage() {
 
   // Animation Controls
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [targetFps, setTargetFps] = useState<number>(35);
-  const [chunkSize, setChunkSize] = useState<number>(600);
+  const [targetFps, setTargetFps] = useState<number>(25);
+  const [chunkSize, setChunkSize] = useState<number>(350);
   const [currentSeq, setCurrentSeq] = useState<number>(0);
   const [actualFps, setActualFps] = useState<number>(0);
+  const [qrTheme, setQrTheme] = useState<"classic" | "neon" | "purple">("classic");
 
   // Debug & UI state
   const [copied, setCopied] = useState<boolean>(false);
@@ -46,13 +48,15 @@ export default function TransmitPage() {
   const fpsTimerRef = useRef<number>(0);
   const seqRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(true);
-  const targetFpsRef = useRef<number>(35);
+  const targetFpsRef = useRef<number>(25);
+  const qrThemeRef = useRef<"classic" | "neon" | "purple">("classic");
 
   // Keep refs updated for animation loop
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     targetFpsRef.current = targetFps;
-  }, [isPlaying, targetFps]);
+    qrThemeRef.current = qrTheme;
+  }, [isPlaying, targetFps, qrTheme]);
 
   // Handle Single File Upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,7 +206,7 @@ export default function TransmitPage() {
     reader.readAsArrayBuffer(file);
   }, [chunkSize]);
 
-  // QR Code Rendering Function optimized for requestAnimationFrame
+  // QR Code Rendering Function optimized for user comfort & scanning speed
   const renderFrame = useCallback(
     async (timestamp: number) => {
       if (!encoder || !canvasRef.current) return;
@@ -219,16 +223,20 @@ export default function TransmitPage() {
         // Update text preview
         setCurrentPacketText(packetString);
 
-        // High speed canvas render
+        // Palette theme mapping
+        const palette =
+          qrThemeRef.current === "neon"
+            ? { dark: "#0284c7", light: "#f0f9ff" }
+            : qrThemeRef.current === "purple"
+            ? { dark: "#4338ca", light: "#faf5ff" }
+            : { dark: "#000000", light: "#ffffff" };
+
         try {
           await QRCode.toCanvas(canvasRef.current, packetString, {
             errorCorrectionLevel: "L",
             margin: 2,
             width: 400,
-            color: {
-              dark: "#000000",
-              light: "#FFFFFF",
-            },
+            color: palette,
           });
         } catch (err) {
           console.error("QR Code Render Error:", err);
@@ -280,14 +288,18 @@ export default function TransmitPage() {
     const packetString = encoder.getPacket(seq);
     setCurrentPacketText(packetString);
 
+    const palette =
+      qrTheme === "neon"
+        ? { dark: "#0284c7", light: "#f0f9ff" }
+        : qrTheme === "purple"
+        ? { dark: "#4338ca", light: "#faf5ff" }
+        : { dark: "#000000", light: "#ffffff" };
+
     QRCode.toCanvas(canvasRef.current, packetString, {
       errorCorrectionLevel: "L",
       margin: 2,
       width: 400,
-      color: {
-        dark: "#000000",
-        light: "#FFFFFF",
-      },
+      color: palette,
     });
 
     setCurrentSeq(seq);
@@ -391,22 +403,72 @@ export default function TransmitPage() {
           {/* Canvas Display Card (Left / Top) */}
           <div className="lg:col-span-7 space-y-4">
             <div className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-center space-y-4 glow-cyan relative overflow-hidden">
-              <div className="p-3 bg-white rounded-2xl shadow-2xl border-4 border-slate-900">
+              {/* Sequence Badge Header Overlay */}
+              <div className="flex items-center justify-between w-full max-w-[360px] px-2 text-xs font-mono">
+                <span className="flex items-center gap-1.5 text-cyan-300">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  Packet #{currentSeq}
+                </span>
+                <span className="text-slate-400">
+                  {encoder && currentSeq < encoder.totalChunks ? "Systematic" : "Parity"}
+                </span>
+              </div>
+
+              {/* Styled QR Code Canvas Frame */}
+              <div className="p-3 bg-white rounded-2xl shadow-2xl border-4 border-slate-900 relative">
                 <canvas
                   ref={canvasRef}
-                  className="w-full max-w-[360px] aspect-square block rounded-lg"
+                  className="w-full max-w-[360px] aspect-square block rounded-lg transition-transform duration-100"
                 />
               </div>
 
+              {/* QR Pattern Visual Theme Selection */}
+              <div className="flex items-center gap-2 pt-1">
+                <Palette className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-xs font-mono text-slate-400">QR Pattern Style:</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setQrTheme("classic")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
+                      qrTheme === "classic"
+                        ? "bg-slate-200 text-slate-950 font-bold shadow"
+                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Classic B&W
+                  </button>
+                  <button
+                    onClick={() => setQrTheme("neon")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
+                      qrTheme === "neon"
+                        ? "bg-sky-500 text-white font-bold shadow"
+                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Neon Cyan
+                  </button>
+                  <button
+                    onClick={() => setQrTheme("purple")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
+                      qrTheme === "purple"
+                        ? "bg-indigo-600 text-white font-bold shadow"
+                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Lavender
+                  </button>
+                </div>
+              </div>
+
               {/* Live Sequence Progress Bar */}
-              <div className="w-full space-y-2">
+              <div className="w-full space-y-2 pt-2">
                 <div className="flex justify-between text-xs font-mono text-slate-400">
                   <span>
                     Phase:{" "}
                     <strong className="text-cyan-400">
                       {encoder && currentSeq < encoder.totalChunks
-                        ? "Systematic Chunks"
-                        : "Parity Droplets"}
+                        ? "Systematic Source Chunks"
+                        : "Fountain Parity Droplets"}
                     </strong>
                   </span>
                   <span>
@@ -441,7 +503,7 @@ export default function TransmitPage() {
                 >
                   {isPlaying ? (
                     <>
-                      <Pause className="w-4 h-4" /> Pause Loop
+                      <Pause className="w-4 h-4" /> Pause Stream
                     </>
                   ) : (
                     <>
@@ -535,44 +597,44 @@ export default function TransmitPage() {
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => {
-                      setChunkSize(300);
-                      setTargetFps(25);
+                      setChunkSize(350);
+                      setTargetFps(20);
                     }}
                     className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 300 && targetFps === 25
+                      chunkSize === 350 && targetFps === 20
                         ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-sm"
                         : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
                     }`}
                   >
-                    🛡️ Safe
+                    🛡️ Smooth (Eye-Friendly)
                   </button>
 
                   <button
                     onClick={() => {
-                      setChunkSize(600);
-                      setTargetFps(35);
+                      setChunkSize(500);
+                      setTargetFps(30);
                     }}
                     className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 600 && targetFps === 35
+                      chunkSize === 500 && targetFps === 30
                         ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/60 shadow-sm"
                         : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
                     }`}
                   >
-                    ⚡ Turbo (2x)
+                    ⚡ Balanced (2x)
                   </button>
 
                   <button
                     onClick={() => {
-                      setChunkSize(900);
-                      setTargetFps(45);
+                      setChunkSize(750);
+                      setTargetFps(40);
                     }}
                     className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 900 && targetFps === 45
+                      chunkSize === 750 && targetFps === 40
                         ? "bg-purple-500/20 text-purple-300 border-purple-500/60 shadow-sm"
                         : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
                     }`}
                   >
-                    🚀 Hyper (4x)
+                    🚀 Turbo (4x)
                   </button>
                 </div>
               </div>
@@ -615,8 +677,8 @@ export default function TransmitPage() {
                   className="w-full accent-indigo-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>100B</span>
-                  <span>600B</span>
+                  <span>100B (Simple QR)</span>
+                  <span>500B</span>
                   <span>1200B</span>
                 </div>
               </div>
