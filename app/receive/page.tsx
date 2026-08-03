@@ -766,15 +766,15 @@ export default function ReceivePage() {
                 )}
 
                 {fileCategory === "other" && (
-                  <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 flex items-center gap-3">
-                    <div className="p-3 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400">
-                      <ImageIcon className="w-6 h-6" />
+                  <div className="p-3 sm:p-4 bg-slate-950 rounded-xl border border-slate-800 flex items-center gap-3 overflow-hidden">
+                    <div className="p-2.5 sm:p-3 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400 shrink-0">
+                      <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
-                    <div className="space-y-0.5 text-xs font-mono">
-                      <div className="text-slate-100 font-bold truncate max-w-[200px]">
+                    <div className="space-y-0.5 text-xs font-mono min-w-0 flex-1 overflow-hidden">
+                      <div className="text-slate-100 font-bold truncate">
                         {fileMeta.name}
                       </div>
-                      <div className="text-slate-400">
+                      <div className="text-slate-400 text-[10px] break-all leading-tight max-h-12 overflow-y-auto">
                         Type: {fileMeta.type || "binary"}
                       </div>
                     </div>
@@ -783,30 +783,31 @@ export default function ReceivePage() {
               </div>
 
               {/* File Metadata & Manual Download Button */}
-              <div className="space-y-1 text-xs font-mono text-slate-300 pt-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">File Name:</span>
-                  <span className="text-white font-bold truncate max-w-[200px]">{fileMeta.name}</span>
+              <div className="space-y-1.5 text-xs font-mono text-slate-300 pt-1">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-slate-500 shrink-0">File Name:</span>
+                  <span className="text-white font-bold truncate text-right max-w-[180px] sm:max-w-xs">{fileMeta.name}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">File Size:</span>
-                  <span>{(fileMeta.size / 1024).toFixed(2)} KB</span>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-slate-500 shrink-0">File Size:</span>
+                  <span className="text-slate-200">{(fileMeta.size / 1024).toFixed(2)} KB</span>
                 </div>
               </div>
 
               <a
                 href={downloadUrl}
                 download={fileMeta.name}
-                className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 transition-all text-center leading-snug"
               >
-                <Download className="w-4 h-4" /> Download File to Device ({fileMeta.name})
+                <Download className="w-4 h-4 shrink-0" />
+                <span className="truncate">Save / Download File</span>
               </a>
             </div>
           )}
 
           {/* Block Matrix Grid Heatmap */}
           {totalK > 0 && (
-            <div className="glass-card p-5 rounded-xl space-y-3">
+            <div className="glass-card p-4 sm:p-5 rounded-xl space-y-3">
               <div className="flex items-center justify-between text-xs font-mono text-slate-400">
                 <span className="flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-amber-400" /> Block Recovery Grid
@@ -814,14 +815,14 @@ export default function ReceivePage() {
                 <span>{solvedCount} / {totalK}</span>
               </div>
 
-              <div className="grid grid-cols-10 sm:grid-cols-12 gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-900">
+              <div className="grid grid-cols-8 xs:grid-cols-10 sm:grid-cols-12 gap-1 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-900">
                 {Array.from({ length: totalK }).map((_, idx) => {
                   const isSolved = decoderRef.current.decodedBlocks.has(idx);
                   return (
                     <div
                       key={idx}
                       title={`Block #${idx}: ${isSolved ? "Solved" : "Pending"}`}
-                      className={`aspect-square rounded-[3px] transition-all duration-200 ${
+                      className={`aspect-square rounded-[2px] transition-all duration-200 ${
                         isSolved
                           ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)] scale-100"
                           : "bg-slate-800 border border-slate-700/50 scale-90"
