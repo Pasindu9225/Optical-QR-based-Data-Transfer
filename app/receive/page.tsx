@@ -65,11 +65,14 @@ export default function ReceivePage() {
   const [currentFolderPrefix, setCurrentFolderPrefix] = useState<string>("");
   const [selectedFileInZip, setSelectedFileInZip] = useState<ZipEntry | null>(null);
 
-  // Performance stats
+  // Performance stats & Live Speedometer
   const [scanFps, setScanFps] = useState<number>(0);
-  const [transferSpeed, setTransferSpeed] = useState<number>(0);
+  const [transferSpeed, setTransferSpeed] = useState<number>(0); // Live KB/s
+  const [peakSpeed, setPeakSpeed] = useState<number>(0); // Peak KB/s
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [lastScannedText, setLastScannedText] = useState<string>("");
+
+  const recentBytesRef = useRef<Array<{ time: number; bytes: number }>>([]);
 
   // HTML & Animation Refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -213,19 +216,18 @@ export default function ReceivePage() {
               setDuplicateCount(decoder.duplicateCount);
               setProcessedCount(decoder.totalPacketsProcessed);
 
-              if (!startTimeRef.current && decoder.totalChunks > 0) {
-                startTimeRef.current = timestamp;
-              }
+              // Real-time Sliding Window Speedometer (1.5 second rolling window)
+              const approxBytes = rawData.length * 0.75;
+              recentBytesRef.current.push({ time: timestamp, bytes: approxBytes });
 
-              // Track transfer speed
-              if (startTimeRef.current) {
-                const elapsedSeconds = (timestamp - startTimeRef.current) / 1000;
-                if (elapsedSeconds > 0) {
-                  const totalBytes = decoder.decodedBlocks.size * 300;
-                  bytesReceivedRef.current = totalBytes;
-                  setTransferSpeed(Math.round((totalBytes / 1024) / elapsedSeconds));
-                }
-              }
+              const cutoff = timestamp - 1500;
+              recentBytesRef.current = recentBytesRef.current.filter((item) => item.time >= cutoff);
+
+              const totalRecentBytes = recentBytesRef.current.reduce((acc, item) => acc + item.bytes, 0);
+              const liveKBps = parseFloat(((totalRecentBytes / 1024) / 1.5).toFixed(1));
+
+              setTransferSpeed(liveKBps);
+              setPeakSpeed((prev) => Math.max(prev, liveKBps));
 
               // Check if completed
               if (decoder.isComplete && !isComplete) {
@@ -341,7 +343,9 @@ export default function ReceivePage() {
     setCurrentFolderPrefix("");
     setSelectedFileInZip(null);
     startTimeRef.current = null;
+    recentBytesRef.current = [];
     setTransferSpeed(0);
+    setPeakSpeed(0);
     setLastScannedText("");
   };
 
@@ -563,10 +567,26 @@ export default function ReceivePage() {
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-1">
-                <span className="text-[10px] font-mono text-slate-500 uppercase">Transfer Speed</span>
-                <div className="text-lg font-bold font-mono text-indigo-400">
-                  {transferSpeed} <span className="text-xs text-slate-500">KB/s</span>
+              {/* Live Sliding-Window Speedometer Widget */}
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-1 relative overflow-hidden">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <Zap className={`w-3 h-3 text-amber-400 ${transferSpeed > 0 ? "animate-pulse" : ""}`} />
+                    Live Speed
+                  </span>
+                  <span className="text-cyan-400 font-semibold">Peak: {peakSpeed}</span>
+                </div>
+
+                <div className="text-lg font-bold font-mono text-cyan-300">
+                  {transferSpeed} <span className="text-xs text-slate-500 font-normal">KB/s</span>
+                </div>
+
+                {/* Live Gauge Progress Bar */}
+                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800/60 mt-1">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-200"
+                    style={{ width: `${Math.min(100, (transferSpeed / 120) * 100)}%` }}
+                  />
                 </div>
               </div>
             </div>
