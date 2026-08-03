@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PhotonDrop ⚡
+> Air-Gapped Optical File Transfer via Animated QR Codes
 
-## Getting Started
+**PhotonDrop** allows you to send files visually between any two devices (PC, Laptop, Smartphone, Tablet) using high-speed animated QR code streams. Zero Bluetooth, zero Wi-Fi, zero external server connection required!
 
-First, run the development server:
+Developed by **Pasindu Gayan**.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 How to Use
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Send a File (Transmitter Device)
+1. Open the **Transmitter** page: `/transmit`.
+2. Click **"Choose Binary File"** and select any file (Image, Document, PDF, Audio, Video, ZIP, etc.).
+3. The app will generate an animated QR code stream.
+4. *(Optional)* Select a **Speed Preset**:
+   - **🛡️ Safe Mode**: For slower cameras.
+   - **⚡ Turbo Mode (Default)**: Fast 2x transfer speed.
+   - **🚀 Hyper Mode**: Maximum speed for modern high-refresh screens & cameras.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+### 2. Receive a File (Receiver Device)
+1. Open the **Receiver** page: `/receive` on your second device (e.g. smartphone or tablet).
+2. Allow camera access.
+3. Point your camera lens at the transmitting screen displaying the animated QR codes.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Automatic Preview & Download
+1. As your camera scans the QR stream, watch the **Decoding Progress Bar** and **Block Recovery Grid** fill up in real-time.
+2. Even if some frames are missed due to glare or motion, the recovery engine automatically handles dropped packets!
+3. Once 100% complete:
+   - An **instant file preview** (image, text snippet, audio, or video player) will appear on screen.
+   - Your reconstructed file will automatically download to your device!
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## ✨ Key Features
+- **100% Private & Air-Gapped**: Runs entirely inside your browser. No files are ever uploaded to any cloud server.
+- **Universal Format Support**: Send any file type (`.png`, `.jpg`, `.pdf`, `.mp3`, `.mp4`, `.zip`, `.txt`, etc.).
+- **Live Media Preview**: Instant preview for images, documents, audio, and video right after scanning.
+- **High-Speed Turbo Stream**: Up to 60 FPS continuous camera scan loops.
