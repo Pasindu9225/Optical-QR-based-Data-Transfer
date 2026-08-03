@@ -456,45 +456,55 @@ export default function ReceivePage() {
 
                 {/* Completed Viewfinder Overlay with In-Window Media Viewer */}
                 {isComplete && (
-                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3 z-20 overflow-y-auto">
+                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center space-y-3 z-20 overflow-y-auto">
                     <div className="p-3 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                      <CheckCircle2 className="w-8 h-8" />
+                      <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-100">
-                      {isZipArchive ? "Folder Received!" : "File Received & Decoded!"}
+                    <h3 className="text-base sm:text-lg font-bold text-slate-100">
+                      {isZipArchive ? "Folder Received!" : "File Decoded Successfully!"}
                     </h3>
-                    <p className="text-xs font-mono text-cyan-300 truncate max-w-[280px]">
+                    <p className="text-xs font-mono text-cyan-300 truncate max-w-[240px] sm:max-w-[280px]">
                       {fileMeta?.name}
                     </p>
 
                     {/* Single File Image Preview */}
                     {!isZipArchive && fileCategory === "image" && downloadUrl && (
-                      <div className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl max-h-40 overflow-hidden flex items-center justify-center">
+                      <div className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl max-h-36 overflow-hidden flex items-center justify-center">
                         {/* eslint-disable-next-html-element-suppression */}
                         <img
                           src={downloadUrl}
                           alt="Preview"
-                          className="max-h-36 object-contain rounded-lg shadow-md"
+                          className="max-h-32 object-contain rounded-lg shadow-md"
                         />
                       </div>
                     )}
 
                     {/* Single File Audio Preview */}
                     {!isZipArchive && fileCategory === "audio" && downloadUrl && (
-                      <div className="w-full max-w-[280px] p-2 bg-slate-900 rounded-xl border border-slate-800">
+                      <div className="w-full max-w-[260px] p-2 bg-slate-900 rounded-xl border border-slate-800">
                         <audio controls src={downloadUrl} className="w-full h-8" />
                       </div>
                     )}
 
-                    {/* Action Buttons */}
+                    {/* Action Buttons: View in App vs Download */}
                     {downloadUrl && (
-                      <div className="flex items-center gap-2 pt-1">
+                      <div className="flex flex-col xs:flex-row items-center gap-2 pt-1 w-full justify-center">
+                        <button
+                          onClick={() => {
+                            const el = document.getElementById("received-file-card");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }}
+                          className="w-full xs:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-semibold text-xs border border-slate-700/80 transition-all"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View in App
+                        </button>
+
                         <a
                           href={downloadUrl}
                           download={fileMeta?.name || "downloaded-file"}
-                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/30 transition-all"
+                          className="w-full xs:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/30 transition-all"
                         >
-                          <Download className="w-4 h-4" /> Download File
+                          <Download className="w-3.5 h-3.5" /> Save File
                         </a>
                       </div>
                     )}
@@ -709,7 +719,7 @@ export default function ReceivePage() {
 
           {/* Single File Media Hub (If Single File Scanned) */}
           {!isZipArchive && fileMeta && downloadUrl && (
-            <div className="glass-card p-5 rounded-xl space-y-4 border border-emerald-500/40 bg-emerald-950/20 glow-cyan">
+            <div id="received-file-card" className="glass-card p-5 rounded-xl space-y-4 border border-emerald-500/40 bg-emerald-950/20 glow-cyan">
               <div className="flex items-center justify-between border-b border-emerald-800/40 pb-3">
                 <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
                   <FileCheck className="w-4 h-4" /> Received Media Viewer
