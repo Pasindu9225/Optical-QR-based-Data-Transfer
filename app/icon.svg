@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="qrGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="128" fill="none" stroke="#38bdf8" stroke-width="12" stroke-opacity="0.4"/>
+
+  <!-- Glowing background beam -->
+  <circle cx="256" cy="256" r="180" fill="#38bdf8" opacity="0.15" filter="url(#glow)"/>
+
+  <!-- Finder Pattern Top-Left -->
+  <rect x="96" y="96" width="128" height="128" rx="24" fill="url(#qrGrad)"/>
+  <rect x="120" y="120" width="80" height="80" rx="14" fill="#090d16"/>
+  <rect x="144" y="144" width="32" height="32" rx="8" fill="url(#qrGrad)"/>
+
+  <!-- Finder Pattern Top-Right -->
+  <rect x="288" y="96" width="128" height="128" rx="24" fill="url(#qrGrad)"/>
+  <rect x="312" y="120" width="80" height="80" rx="14" fill="#090d16"/>
+  <rect x="336" y="144" width="32" height="32" rx="8" fill="url(#qrGrad)"/>
+
+  <!-- Finder Pattern Bottom-Left -->
+  <rect x="96" y="288" width="128" height="128" rx="24" fill="url(#qrGrad)"/>
+  <rect x="120" y="312" width="80" height="80" rx="14" fill="#090d16"/>
+  <rect x="144" y="336" width="32" height="32" rx="8" fill="url(#qrGrad)"/>
+
+  <!-- Data Matrix Dots Bottom-Right -->
+  <rect x="288" y="288" width="48" height="48" rx="12" fill="url(#qrGrad)"/>
+  <rect x="368" y="288" width="48" height="48" rx="12" fill="url(#qrGrad)"/>
+  <rect x="288" y="368" width="48" height="48" rx="12" fill="url(#qrGrad)"/>
+  <rect x="368" y="368" width="48" height="48" rx="12" fill="url(#qrGrad)"/>
+</svg>

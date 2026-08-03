@@ -6,6 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PhotonDrop | High-Speed Optical Fountain QR File Transfer",
   description: "Air-gapped optical data transfer using high-speed animated Fountain QR codes and belief propagation decoding.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
