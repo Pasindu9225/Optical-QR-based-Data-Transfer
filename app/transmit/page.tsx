@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
+import { zipSync } from "fflate";
 import { FountainEncoder, FileMetadata } from "@/lib/fountain";
 import {
   Upload,
@@ -16,6 +17,7 @@ import {
   Zap,
   Radio,
   Info,
+  Folder,
 } from "lucide-react";
 
 export default function TransmitPage() {
@@ -42,7 +44,7 @@ export default function TransmitPage() {
   const fpsTimerRef = useRef<number>(0);
   const seqRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(true);
-  const targetFpsRef = useRef<number>(30);
+  const targetFpsRef = useRef<number>(35);
 
   // Keep refs updated for animation loop
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function TransmitPage() {
     targetFpsRef.current = targetFps;
   }, [isPlaying, targetFps]);
 
-  // Handle File Upload
+  // Handle Single File Upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -76,6 +78,39 @@ export default function TransmitPage() {
       }
     };
     reader.readAsArrayBuffer(selectedFile);
+  };
+
+  // Handle Entire Folder Upload (Zips folder recursively)
+  const handleFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const filesList = e.target.files;
+    if (!filesList || filesList.length === 0) return;
+
+    const filesArray = Array.from(filesList);
+    const folderName = filesArray[0].webkitRelativePath.split("/")[0] || "folder";
+
+    const zipData: Record<string, Uint8Array> = {};
+    for (const f of filesArray) {
+      const relPath = f.webkitRelativePath || f.name;
+      const buf = new Uint8Array(await f.arrayBuffer());
+      zipData[relPath] = buf;
+    }
+
+    const zippedBytes = zipSync(zipData);
+    const mockFile = new File([zippedBytes], `${folderName}.zip`, { type: "application/zip" });
+    setFile(mockFile);
+
+    const metadata: FileMetadata = {
+      name: `${folderName}.zip`,
+      size: zippedBytes.length,
+      type: "application/zip",
+    };
+    setFileMetadata(metadata);
+
+    const newEncoder = new FountainEncoder(zippedBytes, metadata, chunkSize);
+    setEncoder(newEncoder);
+    seqRef.current = 0;
+    setCurrentSeq(0);
+    setIsPlaying(true);
   };
 
   // Re-initialize encoder when chunkSize changes
@@ -116,7 +151,7 @@ export default function TransmitPage() {
         // High speed canvas render
         try {
           await QRCode.toCanvas(canvasRef.current, packetString, {
-            errorCorrectionLevel: "L", // Low ECC to minimize QR matrix density & maximize scan speed
+            errorCorrectionLevel: "L",
             margin: 2,
             width: 400,
             color: {
@@ -225,27 +260,41 @@ export default function TransmitPage() {
       </div>
 
       {!file ? (
-        /* File Upload Dropzone */
+        /* File & Folder Upload Dropzone */
         <div className="glass-panel p-12 rounded-2xl text-center space-y-6 border-2 border-dashed border-slate-700/80 hover:border-cyan-500/50 transition-all">
           <div className="w-20 h-20 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
             <Upload className="w-10 h-10 animate-bounce" />
           </div>
 
           <div className="space-y-2 max-w-md mx-auto">
-            <h2 className="text-xl font-semibold">Select a file to transmit</h2>
+            <h2 className="text-xl font-semibold">Select a file or folder to transmit</h2>
             <p className="text-slate-400 text-sm">
-              Upload any document, image, or zip archive. The file will be encoded into high-frequency optical QR code droplets.
+              Upload single files or entire folders. The payload will be encoded into high-frequency optical QR droplets.
             </p>
           </div>
 
-          <div>
-            <label className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-lg shadow-cyan-500/20 cursor-pointer transition-all">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-lg shadow-cyan-500/20 cursor-pointer transition-all">
               <Upload className="w-4 h-4" />
-              <span>Choose Binary File</span>
+              <span>Choose File</span>
               <input
                 type="file"
                 className="hidden"
                 onChange={handleFileChange}
+              />
+            </label>
+
+            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl glass-card hover:bg-slate-800 text-slate-200 border border-slate-700/80 font-medium cursor-pointer transition-all">
+              <Folder className="w-4 h-4 text-cyan-400" />
+              <span>Upload Entire Folder</span>
+              <input
+                type="file"
+                className="hidden"
+                // @ts-expect-error - webkitdirectory non-standard attribute
+                webkitdirectory=""
+                directory=""
+                multiple
+                onChange={handleFolderChange}
               />
             </label>
           </div>
