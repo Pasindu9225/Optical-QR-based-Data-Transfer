@@ -163,7 +163,8 @@ export default function ReceivePage() {
           if (qrCode && qrCode.data) {
             const rawData = qrCode.data;
 
-            if (rawData !== lastScannedText || timestamp - lastPacketTimeRef.current > 150) {
+            // Process every frame immediately (up to 60 FPS scan rate)
+            if (rawData !== lastScannedText || timestamp - lastPacketTimeRef.current > 16) {
               lastPacketTimeRef.current = timestamp;
               setLastScannedText(rawData);
 

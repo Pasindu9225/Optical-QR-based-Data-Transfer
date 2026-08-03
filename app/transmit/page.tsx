@@ -25,8 +25,8 @@ export default function TransmitPage() {
 
   // Animation Controls
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [targetFps, setTargetFps] = useState<number>(30);
-  const [chunkSize, setChunkSize] = useState<number>(300);
+  const [targetFps, setTargetFps] = useState<number>(35);
+  const [chunkSize, setChunkSize] = useState<number>(600);
   const [currentSeq, setCurrentSeq] = useState<number>(0);
   const [actualFps, setActualFps] = useState<number>(0);
 
@@ -382,11 +382,64 @@ export default function TransmitPage() {
               </div>
             </div>
 
-            {/* Slider Settings Card */}
+            {/* Slider & Speed Presets Card */}
             <div className="glass-card p-5 rounded-xl space-y-5">
-              <div className="flex items-center gap-2 text-slate-200 font-medium text-sm border-b border-slate-800 pb-3">
-                <Sliders className="w-4 h-4 text-indigo-400" />
-                <span>Stream Parameters</span>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span className="flex items-center gap-2 text-slate-200 font-medium text-sm">
+                  <Sliders className="w-4 h-4 text-indigo-400" />
+                  <span>Stream Parameters & Speed</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+                  Est. {Math.round((chunkSize * targetFps) / 1024)} KB/s
+                </span>
+              </div>
+
+              {/* Speed Preset Quick Buttons */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono text-slate-400">Speed Presets:</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      setChunkSize(300);
+                      setTargetFps(25);
+                    }}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
+                      chunkSize === 300 && targetFps === 25
+                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-sm"
+                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    }`}
+                  >
+                    🛡️ Safe
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setChunkSize(600);
+                      setTargetFps(35);
+                    }}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
+                      chunkSize === 600 && targetFps === 35
+                        ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/60 shadow-sm"
+                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    }`}
+                  >
+                    ⚡ Turbo (2x)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setChunkSize(900);
+                      setTargetFps(45);
+                    }}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
+                      chunkSize === 900 && targetFps === 45
+                        ? "bg-purple-500/20 text-purple-300 border-purple-500/60 shadow-sm"
+                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    }`}
+                  >
+                    🚀 Hyper (4x)
+                  </button>
+                </div>
               </div>
 
               {/* Target FPS Slider */}
@@ -405,9 +458,9 @@ export default function TransmitPage() {
                   className="w-full accent-cyan-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>5 FPS (Slow Camera)</span>
-                  <span>30 FPS (Standard)</span>
-                  <span>60 FPS (High Speed)</span>
+                  <span>5 FPS</span>
+                  <span>30 FPS</span>
+                  <span>60 FPS</span>
                 </div>
               </div>
 
@@ -420,16 +473,16 @@ export default function TransmitPage() {
                 <input
                   type="range"
                   min="100"
-                  max="800"
+                  max="1200"
                   step="50"
                   value={chunkSize}
                   onChange={(e) => setChunkSize(parseInt(e.target.value, 10))}
                   className="w-full accent-indigo-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>100B (Very Dense QR)</span>
-                  <span>300B (Balanced)</span>
-                  <span>800B (Large File)</span>
+                  <span>100B</span>
+                  <span>600B</span>
+                  <span>1200B</span>
                 </div>
               </div>
             </div>
