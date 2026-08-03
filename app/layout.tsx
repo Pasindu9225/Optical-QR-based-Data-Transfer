@@ -70,9 +70,14 @@ export default function RootLayout({
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>Air-Gapped Optical Data Transfer Protocol</span>
             </div>
+
+            <div className="text-xs font-mono text-slate-400">
+              Developed by <span className="text-cyan-400 font-bold hover:underline">Pasindu Gayan</span>
+            </div>
+
             <div className="flex items-center gap-4 text-xs font-mono text-slate-400">
               <span className="flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-amber-400" /> 30 FPS QR Streaming
+                <Zap className="w-3.5 h-3.5 text-amber-400" /> 60 FPS Turbo Mode
               </span>
               <span>•</span>
               <span>Zero External Server Connection Required</span>
