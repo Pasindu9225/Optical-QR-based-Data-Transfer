@@ -103,82 +103,104 @@ export default function ReceivePage() {
       osc.start();
       osc.stop(ctx.currentTime + 0.1);
     } catch {
-      // Audio context policy
+      // Audio play blocked or not supported
     }
   }, []);
 
-  // Initialize camera list
+  // Classify file category
+  const detectCategory = (filename: string, mimeType: string): "image" | "text" | "audio" | "video" | "other" => {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const mime = mimeType.toLowerCase();
+
+    if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) return "image";
+    if (mime.startsWith("video/") || ["mp4", "webm", "mov", "mkv"].includes(ext)) return "video";
+    if (mime.startsWith("audio/") || ["mp3", "wav", "ogg", "aac", "m4a"].includes(ext)) return "audio";
+    if (
+      mime.startsWith("text/") ||
+      mime.includes("json") ||
+      mime.includes("javascript") ||
+      ["txt", "md", "json", "js", "ts", "html", "css", "py", "csv", "xml"].includes(ext)
+    )
+      return "text";
+
+    return "other";
+  };
+
+  // Enumerate camera devices
   useEffect(() => {
     async function getDevices() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoInputs = devices.filter((d) => d.kind === "videoinput");
         setCameraDevices(videoInputs);
-        if (videoInputs.length > 0) {
-          const backCamera = videoInputs.find((d) =>
-            d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("environment")
-          );
-          setSelectedDeviceId(backCamera ? backCamera.deviceId : videoInputs[0].deviceId);
+
+        const backCam = videoInputs.find(
+          (d) => d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("environment")
+        );
+        if (backCam) {
+          setSelectedDeviceId(backCam.deviceId);
+        } else if (videoInputs.length > 0) {
+          setSelectedDeviceId(videoInputs[0].deviceId);
         }
       } catch (err) {
-        console.error("Error enumerating video devices:", err);
+        console.error("Device enumeration failed:", err);
       }
     }
     getDevices();
   }, []);
 
   // Start Camera Stream
-  const startCamera = useCallback(async (deviceId?: string) => {
+  const startCamera = useCallback(async () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
 
-    const constraints: MediaStreamConstraints = {
-      video: deviceId
-        ? { deviceId: { exact: deviceId } }
-        : { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-    };
-
     try {
+      const constraints: MediaStreamConstraints = {
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      };
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        videoRef.current.setAttribute("playsinline", "true");
+        await videoRef.current.play();
+        setHasCameraAccess(true);
       }
-      setHasCameraAccess(true);
     } catch (err) {
-      console.error("Camera access denied or failed:", err);
+      console.error("Camera access error:", err);
       setHasCameraAccess(false);
     }
-  }, []);
+  }, [selectedDeviceId]);
 
   useEffect(() => {
-    startCamera(selectedDeviceId);
+    startCamera();
 
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [selectedDeviceId, startCamera]);
+  }, [startCamera]);
 
-  // Helper to categorize MIME / Extension
-  const getCategory = (filename: string, mime: string) => {
-    const m = mime.toLowerCase();
-    const n = filename.toLowerCase();
-    if (m.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(n)) return "image";
-    if (m.startsWith("text/") || /\.(txt|json|md|csv|html|xml|js|ts|css|py)$/.test(n)) return "text";
-    if (m.startsWith("audio/") || /\.(mp3|wav|ogg|m4a)$/.test(n)) return "audio";
-    if (m.startsWith("video/") || /\.(mp4|webm|mov)$/.test(n)) return "video";
-    return "other";
-  };
-
-  // High Frequency Scanning Loop
+  // High-frequency jsQR scan loop
   const scanLoop = useCallback(
     (timestamp: number) => {
-      const video = videoRef.current;
-      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+        const video = videoRef.current;
+
+        // Calculate Scan FPS
+        scanFrameCountRef.current++;
+        if (timestamp - scanFpsTimerRef.current >= 1000) {
+          setScanFps(scanFrameCountRef.current);
+          scanFrameCountRef.current = 0;
+          scanFpsTimerRef.current = timestamp;
+        }
+
         if (!offscreenCanvasRef.current) {
           offscreenCanvasRef.current = document.createElement("canvas");
         }
@@ -242,65 +264,57 @@ export default function ReceivePage() {
                   setDownloadUrl(url);
 
                   const mime = result.metadata.type.toLowerCase();
-                  const name = result.metadata.name.toLowerCase();
+                  const name = result.metadata.name;
+                  const cat = detectCategory(name, mime);
+                  setFileCategory(cat);
 
-                  // Check if file is ZIP Folder Archive
+                  // Process ZIP Folder Archive
                   if (mime.includes("zip") || name.endsWith(".zip")) {
                     setIsZipArchive(true);
-                    result.blob.arrayBuffer().then((ab) => {
-                      const u8 = new Uint8Array(ab);
+                    (async () => {
                       try {
-                        const unzipped = unzipSync(u8);
+                        const arrayBuffer = await result.blob.arrayBuffer();
+                        const unzipped = unzipSync(new Uint8Array(arrayBuffer));
                         const entries: ZipEntry[] = [];
-                        Object.keys(unzipped).forEach((path) => {
-                          const fileData = unzipped[path];
-                          const isDir = path.endsWith("/");
-                          const filename = path.split("/").filter(Boolean).pop() || path;
-                          const fileBlob = new Blob([fileData]);
-                          const fileUrl = URL.createObjectURL(fileBlob);
-                          const category = getCategory(filename, "");
 
-                          let snippet: string | undefined;
-                          if (category === "text" && fileData.length < 50000) {
-                            snippet = new TextDecoder().decode(fileData).slice(0, 1000);
+                        for (const path in unzipped) {
+                          const isDir = path.endsWith("/");
+                          const bytes = unzipped[path];
+                          const blob = new Blob([bytes.buffer as ArrayBuffer]);
+                          const entryUrl = URL.createObjectURL(blob);
+                          const entryName = path.split("/").filter(Boolean).pop() || path;
+                          const entryCat = detectCategory(entryName, "");
+
+                          let snippet: string | undefined = undefined;
+                          if (entryCat === "text" && bytes.length < 20000) {
+                            snippet = new TextDecoder().decode(bytes.subarray(0, 1000));
                           }
 
                           entries.push({
                             path,
-                            name: filename,
-                            size: fileData.length,
+                            name: entryName,
+                            size: bytes.length,
                             isDir,
-                            blob: fileBlob,
-                            url: fileUrl,
-                            category,
+                            blob,
+                            url: entryUrl,
+                            category: entryCat,
                             textSnippet: snippet,
                           });
-                        });
+                        }
                         setZipEntries(entries);
                       } catch (err) {
-                        console.error("Failed to unzip folder archive:", err);
+                        console.error("Failed to unzip archive:", err);
                       }
+                    })();
+                  } else if (cat === "text") {
+                    // Single text file preview snippet
+                    result.blob.text().then((txt) => {
+                      setTextPreview(txt.slice(0, 3000));
                     });
-                  } else {
-                    // Single file
-                    setIsZipArchive(false);
-                    const cat = getCategory(name, mime);
-                    setFileCategory(cat);
-                    if (cat === "text") {
-                      result.blob.text().then((txt) => setTextPreview(txt.slice(0, 1000)));
-                    }
                   }
                 }
               }
             }
-          }
-
-          // Scan FPS counter
-          scanFrameCountRef.current++;
-          if (timestamp - scanFpsTimerRef.current >= 1000) {
-            setScanFps(scanFrameCountRef.current);
-            scanFrameCountRef.current = 0;
-            scanFpsTimerRef.current = timestamp;
           }
         }
       }
@@ -360,15 +374,18 @@ export default function ReceivePage() {
       if (!relative) return;
 
       const parts = relative.split("/").filter(Boolean);
-      if (parts.length > 1) {
+      if (parts.length === 1) {
+        // Direct child file or dir
+        if (!entry.isDir) items.push(entry);
+      } else if (parts.length > 1) {
         // Subdirectory
-        const dirName = parts[0];
-        const dirPath = currentFolderPrefix + dirName + "/";
-        if (!seenDirs.has(dirPath)) {
-          seenDirs.add(dirPath);
+        const subDirName = parts[0];
+        const subDirPath = currentFolderPrefix + subDirName + "/";
+        if (!seenDirs.has(subDirPath)) {
+          seenDirs.add(subDirPath);
           items.push({
-            path: dirPath,
-            name: dirName,
+            path: subDirPath,
+            name: subDirName,
             size: 0,
             isDir: true,
             blob: new Blob(),
@@ -376,9 +393,6 @@ export default function ReceivePage() {
             category: "other",
           });
         }
-      } else if (parts.length === 1 && !entry.isDir) {
-        // File in current dir
-        items.push(entry);
       }
     });
 
@@ -386,150 +400,130 @@ export default function ReceivePage() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-6 rounded-2xl">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 text-indigo-400 font-mono text-xs font-semibold uppercase tracking-wider">
-            <ArrowDownLeft className="w-4 h-4" />
-            <span>Optic Receiver Mode</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Fountain QR Scanner</h1>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2.5 rounded-xl glass-card hover:bg-slate-800 text-slate-300 border border-slate-700/60"
-            title={soundEnabled ? "Mute Decode Beep" : "Enable Decode Beep"}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-cyan-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-          </button>
-
-          <button
-            onClick={resetDecoder}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl glass-card hover:bg-slate-800 text-slate-200 border border-slate-700/60 font-medium text-xs"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset Scanner
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-8 max-w-6xl mx-auto py-4">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Camera Stream Viewfinder (Left) */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="glass-panel p-4 rounded-2xl glow-purple relative overflow-hidden flex flex-col items-center justify-center">
-            {hasCameraAccess === false ? (
-              <div className="p-12 text-center space-y-4 max-w-md">
-                <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-                <h3 className="text-lg font-semibold text-rose-300">Camera Access Denied</h3>
-                <p className="text-xs text-slate-400">
-                  Please allow camera permission in your browser settings to scan Fountain QR codes.
-                </p>
+        {/* Left Column: Camera Viewfinder (lg:col-span-7) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="apple-glass-card rounded-[2.5rem] p-6 space-y-6 border border-white/10 relative overflow-hidden">
+            {/* Viewfinder Header Bar */}
+            <div className="flex items-center justify-between text-xs font-mono text-gray-400 border-b border-white/5 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-white font-medium">Optical Scanner</span>
+              </div>
+
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={() => startCamera(selectedDeviceId)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs"
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 transition-all"
+                  title="Toggle Audio Feedback"
                 >
-                  Retry Camera Connection
+                  {soundEnabled ? (
+                    <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 text-gray-500" />
+                  )}
+                </button>
+
+                <button
+                  onClick={resetDecoder}
+                  className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 transition-all"
+                  title="Reset Scanner Session"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : (
-              <div className="relative w-full max-w-[480px] aspect-square rounded-xl overflow-hidden bg-black border-2 border-indigo-500/40 shadow-2xl">
-                <video
-                  ref={videoRef}
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
+            </div>
 
-                {/* Laser Scanning Overlay Line */}
-                {!isComplete && (
-                  <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#38bdf8] animate-scan-line z-10 pointer-events-none" />
-                )}
-
-                {/* Corner Targeting Reticle */}
-                <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400 pointer-events-none" />
-                <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400 pointer-events-none" />
-                <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-cyan-400 pointer-events-none" />
-                <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400 pointer-events-none" />
-
-                {/* Live Scanner FPS Badge */}
-                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-950/80 border border-slate-800 font-mono text-[10px] text-cyan-300 backdrop-blur">
-                  Scan: {scanFps} FPS
-                </div>
-
-                {/* Completed Viewfinder Overlay with In-Window Media Viewer */}
-                {isComplete && (
-                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center space-y-3 z-20 overflow-y-auto">
-                    <div className="p-3 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                      <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
-                    </div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-100">
-                      {isZipArchive ? "Folder Received!" : "File Decoded Successfully!"}
-                    </h3>
-                    <p className="text-xs font-mono text-cyan-300 truncate max-w-[240px] sm:max-w-[280px]">
-                      {fileMeta?.name}
-                    </p>
-
-                    {/* Single File Image Preview */}
-                    {!isZipArchive && fileCategory === "image" && downloadUrl && (
-                      <div className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl max-h-36 overflow-hidden flex items-center justify-center">
-                        {/* eslint-disable-next-html-element-suppression */}
-                        <img
-                          src={downloadUrl}
-                          alt="Preview"
-                          className="max-h-32 object-contain rounded-lg shadow-md"
-                        />
-                      </div>
-                    )}
-
-                    {/* Single File Audio Preview */}
-                    {!isZipArchive && fileCategory === "audio" && downloadUrl && (
-                      <div className="w-full max-w-[260px] p-2 bg-slate-900 rounded-xl border border-slate-800">
-                        <audio controls src={downloadUrl} className="w-full h-8" />
-                      </div>
-                    )}
-
-                    {/* Action Buttons: View in App vs Download */}
-                    {downloadUrl && (
-                      <div className="flex flex-col xs:flex-row items-center gap-2 pt-1 w-full justify-center">
-                        <button
-                          onClick={() => {
-                            const el = document.getElementById("received-file-card");
-                            if (el) el.scrollIntoView({ behavior: "smooth" });
-                          }}
-                          className="w-full xs:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-semibold text-xs border border-slate-700/80 transition-all"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View in App
-                        </button>
-
-                        <a
-                          href={downloadUrl}
-                          download={fileMeta?.name || "downloaded-file"}
-                          className="w-full xs:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/30 transition-all"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Save File
-                        </a>
-                      </div>
-                    )}
+            {/* Video Stream Container */}
+            <div className="relative rounded-3xl overflow-hidden bg-black border border-white/10 aspect-video sm:aspect-square flex items-center justify-center">
+              {hasCameraAccess === false ? (
+                <div className="p-8 text-center space-y-4 max-w-sm">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6" />
                   </div>
-                )}
-              </div>
-            )}
+                  <h3 className="text-base font-semibold text-white">Camera Access Denied</h3>
+                  <p className="text-xs text-gray-400">
+                    Please allow camera permissions in your browser to scan the optical QR stream.
+                  </p>
+                  <button
+                    onClick={startCamera}
+                    className="px-6 py-2.5 rounded-full bg-blue-500 text-white font-medium text-xs shadow-lg shadow-blue-500/20"
+                  >
+                    Retry Permission
+                  </button>
+                </div>
+              ) : (
+                <div className="relative w-full h-full">
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover rounded-3xl"
+                    playsInline
+                    muted
+                  />
 
-            {/* Camera Input Selector Dropdown */}
+                  {/* Corner Targeting Reticle */}
+                  <div className="absolute top-6 left-6 w-8 h-8 border-t-2 border-l-2 border-blue-500 rounded-tl-lg pointer-events-none" />
+                  <div className="absolute top-6 right-6 w-8 h-8 border-t-2 border-r-2 border-blue-500 rounded-tr-lg pointer-events-none" />
+                  <div className="absolute bottom-6 left-6 w-8 h-8 border-b-2 border-l-2 border-blue-500 rounded-bl-lg pointer-events-none" />
+                  <div className="absolute bottom-6 right-6 w-8 h-8 border-b-2 border-r-2 border-blue-500 rounded-br-lg pointer-events-none" />
+
+                  {/* Scanner FPS Badge */}
+                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/60 border border-white/10 text-[10px] font-mono text-gray-300 backdrop-blur">
+                    Scan: {scanFps} FPS
+                  </div>
+
+                  {/* Completed Viewfinder Overlay */}
+                  {isComplete && (
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4 z-20">
+                      <div className="w-14 h-14 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/40 flex items-center justify-center">
+                        <CheckCircle2 className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white">
+                        {isZipArchive ? "Folder Received!" : "File Decoded Successfully!"}
+                      </h3>
+                      <p className="text-xs font-mono text-gray-300 truncate max-w-[280px]">
+                        {fileMeta?.name}
+                      </p>
+
+                      {/* Action Buttons: View in App vs Download */}
+                      {downloadUrl && (
+                        <div className="flex items-center gap-3 pt-2">
+                          <button
+                            onClick={() => {
+                              const el = document.getElementById("received-file-card");
+                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                            }}
+                            className="px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-xs border border-white/10 transition-all flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-blue-400" /> View in App
+                          </button>
+
+                          <a
+                            href={downloadUrl}
+                            download={fileMeta?.name || "downloaded-file"}
+                            className="px-6 py-2.5 rounded-full bg-blue-500 hover:bg-blue-400 text-white font-medium text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Save File
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Camera Select Dropdown */}
             {cameraDevices.length > 1 && (
-              <div className="w-full max-w-[480px] pt-4">
-                <label className="text-xs font-mono text-slate-400 flex items-center gap-1.5 mb-1.5">
-                  <Camera className="w-3.5 h-3.5 text-indigo-400" /> Select Video Camera Device:
-                </label>
+              <div className="pt-2">
                 <select
                   value={selectedDeviceId}
                   onChange={(e) => setSelectedDeviceId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500"
                 >
                   {cameraDevices.map((d, idx) => (
-                    <option key={d.deviceId} value={d.deviceId}>
+                    <option key={d.deviceId} value={d.deviceId} className="bg-black text-white">
                       {d.label || `Camera ${idx + 1}`}
                     </option>
                   ))}
@@ -539,54 +533,44 @@ export default function ReceivePage() {
           </div>
         </div>
 
-        {/* Right Column: Progress & Interactive Media Hub / Folder Explorer */}
+        {/* Right Column: Progress & Interactive Media Hub / Folder Explorer (lg:col-span-5) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Progress Bar Card */}
-          <div className="glass-card p-6 rounded-2xl space-y-5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                <Activity className="w-4 h-4 text-cyan-400" /> Decoding Progress
+          {/* Progress Card */}
+          <div className="apple-glass-card rounded-3xl p-6 space-y-5 border border-white/10">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" />
+                <span>Decoding Engine</span>
               </span>
-              <span className="text-xl font-bold font-mono text-cyan-400">
+              <span className="text-3xl font-light text-blue-400 tracking-tight">
                 {progressPct}%
               </span>
             </div>
 
-            <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+            {/* Apple Thin Progress Bar */}
+            <div className="h-1 w-full bg-white/20 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 transition-all duration-300"
+                className="h-full bg-blue-500 transition-all duration-300"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-1">
-                <span className="text-[10px] font-mono text-slate-500 uppercase">Solved Blocks</span>
-                <div className="text-lg font-bold font-mono text-slate-100">
-                  {solvedCount} <span className="text-xs text-slate-500">/ {totalK}</span>
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1">
+                <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Solved Blocks</span>
+                <div className="text-xl font-bold font-mono text-white">
+                  {solvedCount} <span className="text-xs text-gray-500 font-normal">/ {totalK}</span>
                 </div>
               </div>
 
-              {/* Live Sliding-Window Speedometer Widget */}
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-1 relative overflow-hidden">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <Zap className={`w-3 h-3 text-amber-400 ${transferSpeed > 0 ? "animate-pulse" : ""}`} />
-                    Live Speed
-                  </span>
-                  <span className="text-cyan-400 font-semibold">Peak: {peakSpeed}</span>
+              {/* Live Speedometer */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1">
+                <div className="flex justify-between items-center text-[10px] font-mono uppercase text-gray-400">
+                  <span>Live Speed</span>
+                  <span className="text-blue-400 font-semibold">Peak: {peakSpeed}</span>
                 </div>
-
-                <div className="text-lg font-bold font-mono text-cyan-300">
-                  {transferSpeed} <span className="text-xs text-slate-500 font-normal">KB/s</span>
-                </div>
-
-                {/* Live Gauge Progress Bar */}
-                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800/60 mt-1">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all duration-200"
-                    style={{ width: `${Math.min(100, (transferSpeed / 120) * 100)}%` }}
-                  />
+                <div className="text-xl font-bold font-mono text-blue-400">
+                  {transferSpeed} <span className="text-xs text-gray-500 font-normal">KB/s</span>
                 </div>
               </div>
             </div>
@@ -594,16 +578,16 @@ export default function ReceivePage() {
 
           {/* Interactive ZIP Folder Explorer (If Folder Scanned) */}
           {isZipArchive && fileMeta && (
-            <div className="glass-card p-5 rounded-xl space-y-4 border border-cyan-500/40 bg-slate-900/80 glow-cyan">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs">
-                  <Folder className="w-4 h-4 text-amber-400" /> Interactive Folder Explorer
+            <div className="apple-glass-card rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2 text-white font-medium text-sm">
+                  <Folder className="w-4 h-4 text-blue-400" /> Folder Explorer
                 </div>
                 {downloadUrl && (
                   <a
                     href={downloadUrl}
                     download={fileMeta.name}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 font-mono text-[11px]"
+                    className="px-4 py-1.5 rounded-full bg-blue-500 hover:bg-blue-400 text-white font-medium text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
                   >
                     <Download className="w-3 h-3" /> Download ZIP
                   </a>
@@ -611,13 +595,13 @@ export default function ReceivePage() {
               </div>
 
               {/* Breadcrumb Navigation */}
-              <div className="flex items-center gap-1 text-xs font-mono text-slate-400 overflow-x-auto pb-1">
+              <div className="flex items-center gap-1 text-xs font-mono text-gray-400 overflow-x-auto pb-1">
                 <button
                   onClick={() => {
                     setCurrentFolderPrefix("");
                     setSelectedFileInZip(null);
                   }}
-                  className="hover:text-cyan-400 underline font-semibold"
+                  className="hover:text-blue-400 underline font-medium"
                 >
                   Root
                 </button>
@@ -628,13 +612,13 @@ export default function ReceivePage() {
                     const prefix = arr.slice(0, idx + 1).join("/") + "/";
                     return (
                       <span key={prefix} className="flex items-center gap-1">
-                        <ChevronRight className="w-3 h-3 text-slate-600" />
+                        <ChevronRight className="w-3 h-3 text-gray-600" />
                         <button
                           onClick={() => {
                             setCurrentFolderPrefix(prefix);
                             setSelectedFileInZip(null);
                           }}
-                          className="hover:text-cyan-400 underline"
+                          className="hover:text-blue-400 underline"
                         >
                           {folder}
                         </button>
@@ -643,223 +627,98 @@ export default function ReceivePage() {
                   })}
               </div>
 
-              {/* Folder Item Grid List */}
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {/* Directory Listing */}
+              <div className="space-y-1 max-h-60 overflow-y-auto">
                 {getCurrentFolderItems().map((item) => (
                   <div
                     key={item.path}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-900 text-xs font-mono transition-colors"
+                    onClick={() => {
+                      if (item.isDir) {
+                        setCurrentFolderPrefix(item.path);
+                        setSelectedFileInZip(null);
+                      } else {
+                        setSelectedFileInZip(item);
+                      }
+                    }}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-mono cursor-pointer transition-all ${
+                      selectedFileInZip?.path === item.path
+                        ? "bg-blue-500/20 border-blue-500/50 text-white"
+                        : "bg-white/5 border-white/5 hover:bg-white/10 text-gray-300"
+                    }`}
                   >
-                    {item.isDir ? (
-                      <button
-                        onClick={() => {
-                          setCurrentFolderPrefix(item.path);
-                          setSelectedFileInZip(null);
-                        }}
-                        className="flex items-center gap-2 text-amber-300 hover:text-amber-200 font-medium truncate"
-                      >
-                        <Folder className="w-4 h-4 text-amber-400 shrink-0" />
-                        <span className="truncate">{item.name} /</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setSelectedFileInZip(item)}
-                        className="flex items-center gap-2 text-slate-200 hover:text-cyan-400 truncate text-left"
-                      >
-                        <File className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <span className="truncate">{item.name}</span>
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 truncate">
+                      {item.isDir ? (
+                        <Folder className="w-4 h-4 text-blue-400 shrink-0" />
+                      ) : item.category === "image" ? (
+                        <ImageIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : item.category === "audio" ? (
+                        <Music className="w-4 h-4 text-purple-400 shrink-0" />
+                      ) : item.category === "video" ? (
+                        <Film className="w-4 h-4 text-rose-400 shrink-0" />
+                      ) : item.category === "text" ? (
+                        <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : (
+                        <File className="w-4 h-4 text-gray-400 shrink-0" />
+                      )}
+                      <span className="truncate">{item.name}</span>
+                    </div>
 
                     {!item.isDir && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-slate-500">
-                          {(item.size / 1024).toFixed(1)} KB
-                        </span>
-                        <button
-                          onClick={() => setSelectedFileInZip(item)}
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300"
-                          title="Preview in Window"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <a
-                          href={item.url}
-                          download={item.name}
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400"
-                          title="Download File"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
+                      <span className="text-[10px] text-gray-500 shrink-0">
+                        {(item.size / 1024).toFixed(1)} KB
+                      </span>
                     )}
                   </div>
                 ))}
               </div>
-
-              {/* In-Zip File Preview Panel */}
-              {selectedFileInZip && (
-                <div className="p-3 bg-slate-950 rounded-xl border border-indigo-500/40 space-y-3 pt-3">
-                  <div className="flex items-center justify-between text-xs font-mono text-cyan-300">
-                    <span className="flex items-center gap-1.5 truncate">
-                      <Eye className="w-3.5 h-3.5 text-cyan-400" /> Previewing: {selectedFileInZip.name}
-                    </span>
-                    <button
-                      onClick={() => setSelectedFileInZip(null)}
-                      className="text-slate-500 hover:text-slate-300 text-[10px]"
-                    >
-                      Close Preview
-                    </button>
-                  </div>
-
-                  {selectedFileInZip.category === "image" && (
-                    <div className="p-2 bg-slate-900 rounded-lg flex justify-center">
-                      {/* eslint-disable-next-html-element-suppression */}
-                      <img src={selectedFileInZip.url} alt={selectedFileInZip.name} className="max-h-48 object-contain rounded" />
-                    </div>
-                  )}
-
-                  {selectedFileInZip.category === "text" && selectedFileInZip.textSnippet && (
-                    <pre className="p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-emerald-300 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                      {selectedFileInZip.textSnippet}
-                    </pre>
-                  )}
-
-                  {selectedFileInZip.category === "audio" && (
-                    <audio controls src={selectedFileInZip.url} className="w-full h-8" />
-                  )}
-
-                  {selectedFileInZip.category === "video" && (
-                    <video controls src={selectedFileInZip.url} className="w-full max-h-48 rounded object-contain" />
-                  )}
-                </div>
-              )}
             </div>
           )}
 
           {/* Single File Media Hub (If Single File Scanned) */}
           {!isZipArchive && fileMeta && downloadUrl && (
-            <div id="received-file-card" className="glass-card p-5 rounded-xl space-y-4 border border-emerald-500/40 bg-emerald-950/20 glow-cyan">
-              <div className="flex items-center justify-between border-b border-emerald-800/40 pb-3">
-                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
-                  <FileCheck className="w-4 h-4" /> Received Media Viewer
+            <div id="received-file-card" className="apple-glass-card rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2 text-white font-medium text-sm">
+                  <FileCheck className="w-4 h-4 text-blue-400" /> Media Hub
                 </div>
-                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-[10px] font-mono text-emerald-300">
+                <span className="px-3 py-1 rounded-full bg-white/10 text-gray-300 font-mono text-[10px]">
                   {fileCategory.toUpperCase()}
                 </span>
               </div>
 
-              {/* In-Window Media Viewer */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-mono">
-                  <Eye className="w-3.5 h-3.5 text-cyan-400" /> File Preview:
+              {fileCategory === "image" && (
+                <div className="p-2 bg-black rounded-2xl border border-white/10 overflow-hidden flex items-center justify-center max-h-64">
+                  {/* eslint-disable-next-html-element-suppression */}
+                  <img src={downloadUrl} alt="Received Image" className="max-h-60 object-contain rounded-xl" />
                 </div>
+              )}
 
-                {fileCategory === "image" && (
-                  <div className="p-2 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex items-center justify-center">
-                    {/* eslint-disable-next-html-element-suppression */}
-                    <img
-                      src={downloadUrl}
-                      alt={fileMeta.name}
-                      className="max-h-56 w-auto object-contain rounded-lg shadow-lg border border-slate-800"
-                    />
-                  </div>
-                )}
-
-                {fileCategory === "text" && textPreview !== null && (
-                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mb-1">
-                      <FileText className="w-3 h-3 text-emerald-400" /> Snippet Content:
-                    </div>
-                    <pre className="max-h-40 overflow-y-auto text-[11px] font-mono text-emerald-300 break-all whitespace-pre-wrap">
-                      {textPreview}
-                    </pre>
-                  </div>
-                )}
-
-                {fileCategory === "audio" && (
-                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-indigo-300">
-                      <Music className="w-4 h-4 text-cyan-400" /> In-Window Audio Player
-                    </div>
-                    <audio controls src={downloadUrl} className="w-full h-9 rounded" />
-                  </div>
-                )}
-
-                {fileCategory === "video" && (
-                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
-                    <div className="flex items-center gap-2 text-xs text-indigo-300 mb-2">
-                      <Film className="w-4 h-4 text-purple-400" /> In-Window Video Player
-                    </div>
-                    <video controls src={downloadUrl} className="w-full max-h-48 rounded-lg object-contain" />
-                  </div>
-                )}
-
-                {fileCategory === "other" && (
-                  <div className="p-3 sm:p-4 bg-slate-950 rounded-xl border border-slate-800 flex items-center gap-3 overflow-hidden">
-                    <div className="p-2.5 sm:p-3 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400 shrink-0">
-                      <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-                    </div>
-                    <div className="space-y-0.5 text-xs font-mono min-w-0 flex-1 overflow-hidden">
-                      <div className="text-slate-100 font-bold truncate">
-                        {fileMeta.name}
-                      </div>
-                      <div className="text-slate-400 text-[10px] break-all leading-tight max-h-12 overflow-y-auto">
-                        Type: {fileMeta.type || "binary"}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* File Metadata & Manual Download Button */}
-              <div className="space-y-1.5 text-xs font-mono text-slate-300 pt-1">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-slate-500 shrink-0">File Name:</span>
-                  <span className="text-white font-bold truncate text-right max-w-[180px] sm:max-w-xs">{fileMeta.name}</span>
+              {fileCategory === "audio" && (
+                <div className="p-4 bg-black rounded-2xl border border-white/10">
+                  <audio controls src={downloadUrl} className="w-full" />
                 </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-slate-500 shrink-0">File Size:</span>
-                  <span className="text-slate-200">{(fileMeta.size / 1024).toFixed(2)} KB</span>
+              )}
+
+              {fileCategory === "video" && (
+                <div className="p-2 bg-black rounded-2xl border border-white/10 overflow-hidden">
+                  <video controls src={downloadUrl} className="w-full max-h-64 rounded-xl" />
                 </div>
-              </div>
+              )}
 
-              <a
-                href={downloadUrl}
-                download={fileMeta.name}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 transition-all text-center leading-snug"
-              >
-                <Download className="w-4 h-4 shrink-0" />
-                <span className="truncate">Save / Download File</span>
-              </a>
-            </div>
-          )}
+              {fileCategory === "text" && textPreview && (
+                <div className="p-4 bg-black/60 rounded-2xl border border-white/5 font-mono text-xs text-gray-300 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  {textPreview}
+                </div>
+              )}
 
-          {/* Block Matrix Grid Heatmap */}
-          {totalK > 0 && (
-            <div className="glass-card p-4 sm:p-5 rounded-xl space-y-3">
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-                <span className="flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" /> Block Recovery Grid
-                </span>
-                <span>{solvedCount} / {totalK}</span>
-              </div>
-
-              <div className="grid grid-cols-8 xs:grid-cols-10 sm:grid-cols-12 gap-1 max-h-36 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-900">
-                {Array.from({ length: totalK }).map((_, idx) => {
-                  const isSolved = decoderRef.current.decodedBlocks.has(idx);
-                  return (
-                    <div
-                      key={idx}
-                      title={`Block #${idx}: ${isSolved ? "Solved" : "Pending"}`}
-                      className={`aspect-square rounded-[2px] transition-all duration-200 ${
-                        isSolved
-                          ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)] scale-100"
-                          : "bg-slate-800 border border-slate-700/50 scale-90"
-                      }`}
-                    />
-                  );
-                })}
+              <div className="pt-2">
+                <a
+                  href={downloadUrl}
+                  download={fileMeta.name}
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-blue-500 hover:bg-blue-400 text-white font-medium text-xs shadow-lg shadow-blue-500/20 transition-all"
+                >
+                  <Download className="w-4 h-4" /> Save {fileMeta.name}
+                </a>
               </div>
             </div>
           )}

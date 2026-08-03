@@ -19,7 +19,6 @@ import {
   Info,
   Folder,
   FileUp,
-  Palette,
 } from "lucide-react";
 
 export default function TransmitPage() {
@@ -30,11 +29,11 @@ export default function TransmitPage() {
 
   // Animation Controls
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [targetFps, setTargetFps] = useState<number>(25);
-  const [chunkSize, setChunkSize] = useState<number>(350);
+  const [targetFps, setTargetFps] = useState<number>(30);
+  const [chunkSize, setChunkSize] = useState<number>(450);
   const [currentSeq, setCurrentSeq] = useState<number>(0);
   const [actualFps, setActualFps] = useState<number>(0);
-  const [qrTheme, setQrTheme] = useState<"classic" | "neon" | "purple">("classic");
+  const [speedPreset, setSpeedPreset] = useState<"safe" | "turbo" | "hyper">("turbo");
 
   // Debug & UI state
   const [copied, setCopied] = useState<boolean>(false);
@@ -48,15 +47,13 @@ export default function TransmitPage() {
   const fpsTimerRef = useRef<number>(0);
   const seqRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(true);
-  const targetFpsRef = useRef<number>(25);
-  const qrThemeRef = useRef<"classic" | "neon" | "purple">("classic");
+  const targetFpsRef = useRef<number>(30);
 
   // Keep refs updated for animation loop
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     targetFpsRef.current = targetFps;
-    qrThemeRef.current = qrTheme;
-  }, [isPlaying, targetFps, qrTheme]);
+  }, [isPlaying, targetFps]);
 
   // Handle Single File Upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,7 +203,22 @@ export default function TransmitPage() {
     reader.readAsArrayBuffer(file);
   }, [chunkSize]);
 
-  // QR Code Rendering Function optimized for user comfort & scanning speed
+  // Apply Speed Presets (Safe, Turbo, Hyper)
+  const applyPreset = (preset: "safe" | "turbo" | "hyper") => {
+    setSpeedPreset(preset);
+    if (preset === "safe") {
+      setChunkSize(350);
+      setTargetFps(20);
+    } else if (preset === "turbo") {
+      setChunkSize(500);
+      setTargetFps(30);
+    } else if (preset === "hyper") {
+      setChunkSize(750);
+      setTargetFps(45);
+    }
+  };
+
+  // QR Code Rendering Function optimized for requestAnimationFrame
   const renderFrame = useCallback(
     async (timestamp: number) => {
       if (!encoder || !canvasRef.current) return;
@@ -223,20 +235,16 @@ export default function TransmitPage() {
         // Update text preview
         setCurrentPacketText(packetString);
 
-        // Palette theme mapping
-        const palette =
-          qrThemeRef.current === "neon"
-            ? { dark: "#0284c7", light: "#f0f9ff" }
-            : qrThemeRef.current === "purple"
-            ? { dark: "#4338ca", light: "#faf5ff" }
-            : { dark: "#000000", light: "#ffffff" };
-
+        // Stark high contrast Apple QR code rendering
         try {
           await QRCode.toCanvas(canvasRef.current, packetString, {
             errorCorrectionLevel: "L",
             margin: 2,
             width: 400,
-            color: palette,
+            color: {
+              dark: "#000000",
+              light: "#FFFFFF",
+            },
           });
         } catch (err) {
           console.error("QR Code Render Error:", err);
@@ -288,18 +296,14 @@ export default function TransmitPage() {
     const packetString = encoder.getPacket(seq);
     setCurrentPacketText(packetString);
 
-    const palette =
-      qrTheme === "neon"
-        ? { dark: "#0284c7", light: "#f0f9ff" }
-        : qrTheme === "purple"
-        ? { dark: "#4338ca", light: "#faf5ff" }
-        : { dark: "#000000", light: "#ffffff" };
-
     QRCode.toCanvas(canvasRef.current, packetString, {
       errorCorrectionLevel: "L",
       margin: 2,
       width: 400,
-      color: palette,
+      color: {
+        dark: "#000000",
+        light: "#FFFFFF",
+      },
     });
 
     setCurrentSeq(seq);
@@ -318,62 +322,45 @@ export default function TransmitPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const calculatedSpeedKBps = Math.round((chunkSize * targetFps) / 1024);
+
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-6 rounded-2xl">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 text-cyan-400 font-mono text-xs font-semibold uppercase tracking-wider">
-            <Radio className="w-4 h-4 animate-pulse" />
-            <span>Optic Transmitter Mode</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Fountain QR Generator</h1>
-        </div>
-
-        {encoder && (
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-cyan-300">
-              Target: <span className="font-bold text-white">{targetFps} FPS</span>
-            </div>
-            <div className="px-3 py-1.5 rounded-lg bg-cyan-950/80 border border-cyan-800 text-xs font-mono text-cyan-400">
-              Actual: <span className="font-bold text-white">{actualFps} FPS</span>
-            </div>
-          </div>
-        )}
-      </div>
-
+    <div className="space-y-8 max-w-6xl mx-auto py-4">
       {!file ? (
-        /* Interactive Drag & Drop Upload Zone */
+        /* State 1: The Upload View (Empty State - Apple HIG Blueprint) */
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`glass-panel p-10 sm:p-14 rounded-2xl text-center space-y-6 border-2 border-dashed transition-all duration-200 ${
+          className={`apple-glass-card rounded-[2.5rem] p-12 sm:p-16 text-center space-y-8 max-w-2xl mx-auto border transition-all duration-300 ${
             isDragging
-              ? "border-cyan-400 bg-cyan-950/40 scale-[1.01] glow-cyan shadow-2xl"
-              : "border-slate-700/80 hover:border-cyan-500/50"
+              ? "border-blue-500 bg-blue-500/10 scale-[1.01] glow-blue"
+              : "border-white/10 hover:border-white/20"
           }`}
         >
-          <div className="w-20 h-20 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400 transition-transform group-hover:scale-105">
+          {/* Large Elegant Upload Icon */}
+          <div className="w-20 h-20 mx-auto rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 shadow-inner">
             {isDragging ? (
-              <FileUp className="w-10 h-10 animate-bounce text-cyan-300" />
+              <FileUp className="w-10 h-10 stroke-[1.5] text-blue-400 animate-bounce" />
             ) : (
-              <Upload className="w-10 h-10 animate-bounce" />
+              <Upload className="w-10 h-10 stroke-[1.5] text-gray-400" />
             )}
           </div>
 
+          {/* Title & Subtitle */}
           <div className="space-y-2 max-w-md mx-auto">
-            <h2 className="text-xl font-semibold">
-              {isDragging ? "Drop your file or folder here!" : "Drag & Drop files or folder here"}
-            </h2>
-            <p className="text-slate-400 text-sm">
-              Drag and drop any file or folder directly into this box, or select using the buttons below.
+            <h1 className="text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+              {isDragging ? "Drop payload here" : "Select a file to transmit"}
+            </h1>
+            <p className="text-gray-400 text-sm font-normal leading-relaxed">
+              Upload a payload to encode into optical droplets. Supports files and entire folder archives.
             </p>
           </div>
 
+          {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
-            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-lg shadow-cyan-500/20 cursor-pointer transition-all">
-              <Upload className="w-4 h-4" />
+            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-full bg-blue-500 hover:bg-blue-400 text-white font-medium shadow-lg shadow-blue-500/20 cursor-pointer transition-all">
+              <Upload className="w-4 h-4 stroke-[2]" />
               <span>Choose File</span>
               <input
                 type="file"
@@ -382,9 +369,9 @@ export default function TransmitPage() {
               />
             </label>
 
-            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl glass-card hover:bg-slate-800 text-slate-200 border border-slate-700/80 font-medium cursor-pointer transition-all">
-              <Folder className="w-4 h-4 text-cyan-400" />
-              <span>Upload Entire Folder</span>
+            <label className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 text-sm cursor-pointer transition-all">
+              <Folder className="w-4 h-4 text-blue-400 stroke-[2]" />
+              <span>Upload Folder</span>
               <input
                 type="file"
                 className="hidden"
@@ -398,88 +385,48 @@ export default function TransmitPage() {
           </div>
         </div>
       ) : (
-        /* Main Transmitter Interface */
+        /* State 2: Active Transmission View (Dashboard - Apple HIG Blueprint) */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Canvas Display Card (Left / Top) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-center space-y-4 glow-cyan relative overflow-hidden">
-              {/* Sequence Badge Header Overlay */}
-              <div className="flex items-center justify-between w-full max-w-[360px] px-2 text-xs font-mono">
-                <span className="flex items-center gap-1.5 text-cyan-300">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  Packet #{currentSeq}
+          {/* Left Column: The Transmitter (lg:col-span-7) */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="apple-glass-card rounded-[2.5rem] p-8 space-y-6 border border-white/10 relative overflow-hidden">
+              {/* Top Status Header */}
+              <div className="flex items-center justify-between text-xs font-mono text-gray-400 border-b border-white/5 pb-4">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-white font-medium">Optic Stream</span>
                 </span>
-                <span className="text-slate-400">
-                  {encoder && currentSeq < encoder.totalChunks ? "Systematic" : "Parity"}
+                <span>
+                  Target: <strong className="text-white">{targetFps} FPS</strong> • Actual:{" "}
+                  <strong className="text-blue-400">{actualFps} FPS</strong>
                 </span>
               </div>
 
-              {/* Styled QR Code Canvas Frame */}
-              <div className="p-3 bg-white rounded-2xl shadow-2xl border-4 border-slate-900 relative">
+              {/* Stark White High-Contrast QR Canvas Container */}
+              <div className="bg-white rounded-2xl p-4 shadow-2xl mx-auto w-full max-w-[360px] aspect-square flex items-center justify-center border border-white/20">
                 <canvas
                   ref={canvasRef}
-                  className="w-full max-w-[360px] aspect-square block rounded-lg transition-transform duration-100"
+                  className="w-full h-full block rounded-lg"
                 />
               </div>
 
-              {/* QR Pattern Visual Theme Selection */}
-              <div className="flex items-center gap-2 pt-1">
-                <Palette className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs font-mono text-slate-400">QR Pattern Style:</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setQrTheme("classic")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
-                      qrTheme === "classic"
-                        ? "bg-slate-200 text-slate-950 font-bold shadow"
-                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Classic B&W
-                  </button>
-                  <button
-                    onClick={() => setQrTheme("neon")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
-                      qrTheme === "neon"
-                        ? "bg-sky-500 text-white font-bold shadow"
-                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Neon Cyan
-                  </button>
-                  <button
-                    onClick={() => setQrTheme("purple")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
-                      qrTheme === "purple"
-                        ? "bg-indigo-600 text-white font-bold shadow"
-                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Lavender
-                  </button>
-                </div>
-              </div>
-
-              {/* Live Sequence Progress Bar */}
-              <div className="w-full space-y-2 pt-2">
-                <div className="flex justify-between text-xs font-mono text-slate-400">
-                  <span>
-                    Phase:{" "}
-                    <strong className="text-cyan-400">
-                      {encoder && currentSeq < encoder.totalChunks
-                        ? "Systematic Source Chunks"
-                        : "Fountain Parity Droplets"}
-                    </strong>
+              {/* Apple-Style Sleek Thin Progress Bar */}
+              <div className="space-y-2 pt-2">
+                <div className="flex justify-between text-xs font-mono text-gray-400">
+                  <span className="text-gray-300">
+                    {encoder && currentSeq < encoder.totalChunks
+                      ? "Systematic Chunks"
+                      : "Parity Droplets"}
                   </span>
                   <span>
                     Seq: <strong className="text-white">{currentSeq}</strong> / Total K:{" "}
-                    <strong className="text-cyan-300">{encoder?.totalChunks}</strong>
+                    <strong className="text-blue-400">{encoder?.totalChunks}</strong>
                   </span>
                 </div>
 
-                <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                <div className="h-1 w-full bg-white/20 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-150"
+                    className="h-full bg-blue-500 transition-all duration-150"
                     style={{
                       width: `${
                         encoder
@@ -491,50 +438,48 @@ export default function TransmitPage() {
                 </div>
               </div>
 
-              {/* Playback Action Controls */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
-                    isPlaying
-                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
-                      : "bg-cyan-500 text-slate-950 hover:bg-cyan-400"
-                  }`}
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause className="w-4 h-4" /> Pause Stream
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 fill-slate-950" /> Start Stream
-                    </>
-                  )}
-                </button>
+              {/* Controls Bar */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="bg-white/10 hover:bg-white/20 text-white rounded-full px-6 py-2.5 text-sm font-medium border border-white/10 transition-all flex items-center gap-2"
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Pause className="w-4 h-4" /> Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-white" /> Start Stream
+                      </>
+                    )}
+                  </button>
 
-                <button
-                  onClick={stepForward}
-                  disabled={isPlaying}
-                  className="p-2.5 rounded-xl glass-card hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700/60"
-                  title="Step 1 Frame"
-                >
-                  <SkipForward className="w-4 h-4" />
-                </button>
+                  <button
+                    onClick={stepForward}
+                    disabled={isPlaying}
+                    className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30 border border-white/10 transition-all"
+                    title="Step 1 Frame"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
 
-                <button
-                  onClick={resetSequence}
-                  className="p-2.5 rounded-xl glass-card hover:bg-slate-800 text-slate-200 border border-slate-700/60"
-                  title="Reset Sequence to 0"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
+                  <button
+                    onClick={resetSequence}
+                    className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-all"
+                    title="Reset Sequence"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                </div>
 
                 <button
                   onClick={() => {
                     setFile(null);
                     setEncoder(null);
                   }}
-                  className="px-3 py-2.5 rounded-xl glass-card hover:bg-rose-950/40 text-rose-400 border border-rose-900/40 text-xs font-semibold"
+                  className="px-4 py-2 rounded-full bg-white/5 hover:bg-rose-500/20 hover:text-rose-400 text-gray-400 text-xs font-medium border border-white/10 transition-all"
                 >
                   Change File
                 </button>
@@ -542,108 +487,95 @@ export default function TransmitPage() {
             </div>
           </div>
 
-          {/* Controls & Configuration Sidebar (Right) */}
+          {/* Right Column: Controls & Metrics (lg:col-span-5) */}
           <div className="lg:col-span-5 space-y-6">
-            {/* File Info Card */}
-            <div className="glass-card p-5 rounded-xl space-y-3">
-              <div className="flex items-center justify-between text-slate-300 border-b border-slate-800 pb-3">
-                <span className="flex items-center gap-2 font-medium text-sm">
-                  <FileText className="w-4 h-4 text-cyan-400" /> File Info
-                </span>
-                <span className="text-xs font-mono text-slate-500">
-                  ID: {encoder?.fileId}
-                </span>
+            {/* Card A: File Info */}
+            <div className="apple-glass-card rounded-3xl p-6 space-y-4 border border-white/10">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 border-b border-white/5 pb-3">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span>File Metadata</span>
               </div>
 
-              <div className="space-y-1.5 text-xs font-mono text-slate-300">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Name:</span>
-                  <span className="font-semibold text-slate-100 truncate max-w-[180px]">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider">Name</span>
+                  <span className="text-sm font-medium text-white truncate max-w-[200px]">
                     {fileMetadata?.name}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Size:</span>
-                  <span className="text-slate-200">
-                    {fileMetadata
-                      ? (fileMetadata.size / 1024).toFixed(2) + " KB"
-                      : "0 KB"}
+
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider">Size</span>
+                  <span className="text-sm font-medium text-white">
+                    {fileMetadata ? (fileMetadata.size / 1024).toFixed(1) + " KB" : "0 KB"}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total Chunks (K):</span>
-                  <span className="text-cyan-400 font-bold">
+
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider">Total Chunks</span>
+                  <span className="text-sm font-medium text-blue-400">
                     {encoder?.totalChunks}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Slider & Speed Presets Card */}
-            <div className="glass-card p-5 rounded-xl space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <span className="flex items-center gap-2 text-slate-200 font-medium text-sm">
-                  <Sliders className="w-4 h-4 text-indigo-400" />
-                  <span>Stream Parameters & Speed</span>
+            {/* Card B: Stream Parameters & Metrics */}
+            <div className="apple-glass-card rounded-3xl p-6 space-y-5 border border-white/10">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-blue-400" />
+                  <span>Stream Controls</span>
                 </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
-                  Est. {Math.round((chunkSize * targetFps) / 1024)} KB/s
+                <span className="text-3xl font-light text-blue-400 tracking-tight">
+                  {calculatedSpeedKBps} <span className="text-xs font-normal text-gray-400">KB/s</span>
                 </span>
               </div>
 
-              {/* Speed Preset Quick Buttons */}
+              {/* iOS-Style Segmented Picker for Speed Presets */}
               <div className="space-y-2">
-                <span className="text-xs font-mono text-slate-400">Speed Presets:</span>
-                <div className="grid grid-cols-3 gap-2">
+                <span className="text-xs text-gray-400">Speed Preset</span>
+                <div className="bg-white/10 p-1 rounded-full border border-white/10 grid grid-cols-3 gap-1">
                   <button
-                    onClick={() => {
-                      setChunkSize(350);
-                      setTargetFps(20);
-                    }}
-                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 350 && targetFps === 20
-                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-sm"
-                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    onClick={() => applyPreset("safe")}
+                    className={`py-1.5 rounded-full text-xs font-medium transition-all ${
+                      speedPreset === "safe"
+                        ? "bg-white/20 text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    🛡️ Smooth (Eye-Friendly)
+                    Safe
                   </button>
 
                   <button
-                    onClick={() => {
-                      setChunkSize(500);
-                      setTargetFps(30);
-                    }}
-                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 500 && targetFps === 30
-                        ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/60 shadow-sm"
-                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    onClick={() => applyPreset("turbo")}
+                    className={`py-1.5 rounded-full text-xs font-medium transition-all ${
+                      speedPreset === "turbo"
+                        ? "bg-white/20 text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    ⚡ Balanced (2x)
+                    Turbo
                   </button>
 
                   <button
-                    onClick={() => {
-                      setChunkSize(750);
-                      setTargetFps(40);
-                    }}
-                    className={`px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${
-                      chunkSize === 750 && targetFps === 40
-                        ? "bg-purple-500/20 text-purple-300 border-purple-500/60 shadow-sm"
-                        : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800"
+                    onClick={() => applyPreset("hyper")}
+                    className={`py-1.5 rounded-full text-xs font-medium transition-all ${
+                      speedPreset === "hyper"
+                        ? "bg-white/20 text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    🚀 Turbo (4x)
+                    Hyper
                   </button>
                 </div>
               </div>
 
-              {/* Target FPS Slider */}
+              {/* macOS-Style Sliders: Thin track (h-1 bg-white/20), small white circular thumb */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-slate-400">Target Frame Rate:</span>
-                  <span className="text-cyan-400 font-bold">{targetFps} FPS</span>
+                  <span className="text-gray-400">Target Frame Rate</span>
+                  <span className="text-white font-medium">{targetFps} FPS</span>
                 </div>
                 <input
                   type="range"
@@ -652,51 +584,40 @@ export default function TransmitPage() {
                   step="1"
                   value={targetFps}
                   onChange={(e) => setTargetFps(parseInt(e.target.value, 10))}
-                  className="w-full accent-cyan-500 cursor-pointer"
+                  className="w-full h-1 bg-white/20 rounded-full appearance-none accent-blue-500 cursor-pointer"
                 />
-                <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>5 FPS</span>
-                  <span>30 FPS</span>
-                  <span>60 FPS</span>
-                </div>
               </div>
 
-              {/* Payload Chunk Size Slider */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-slate-400">Chunk Payload Size:</span>
-                  <span className="text-indigo-400 font-bold">{chunkSize} bytes</span>
+                  <span className="text-gray-400">Chunk Payload Size</span>
+                  <span className="text-white font-medium">{chunkSize} B</span>
                 </div>
                 <input
                   type="range"
-                  min="100"
-                  max="1200"
+                  min="150"
+                  max="1000"
                   step="50"
                   value={chunkSize}
                   onChange={(e) => setChunkSize(parseInt(e.target.value, 10))}
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full h-1 bg-white/20 rounded-full appearance-none accent-blue-500 cursor-pointer"
                 />
-                <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>100B (Simple QR)</span>
-                  <span>500B</span>
-                  <span>1200B</span>
-                </div>
               </div>
             </div>
 
-            {/* Current Packet Raw Debug Text */}
-            <div className="glass-card p-5 rounded-xl space-y-3">
+            {/* Card C: Encoded String Output */}
+            <div className="apple-glass-card rounded-3xl p-6 space-y-3 border border-white/10">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" /> Encoded Packet String
+                <span className="text-xs font-mono text-gray-400 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-blue-400" /> Packet Output
                 </span>
                 <button
                   onClick={copyPacket}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors"
+                  className="flex items-center gap-1 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-xs text-gray-300 transition-all border border-white/10"
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3 h-3 text-emerald-400" /> Copied!
+                      <Check className="w-3 h-3 text-blue-400" /> Copied
                     </>
                   ) : (
                     <>
@@ -706,15 +627,8 @@ export default function TransmitPage() {
                 </button>
               </div>
 
-              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[11px] text-cyan-300 break-all max-h-24 overflow-y-auto">
-                {currentPacketText || "Ready to stream..."}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 leading-relaxed">
-                <Info className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                <span>
-                  First {encoder?.totalChunks} frames are systematic raw chunks. Subsequent frames are XOR parity droplets.
-                </span>
+              <div className="bg-black/50 rounded-xl p-4 border border-white/5 font-mono text-[11px] text-gray-400 break-all max-h-24 overflow-y-auto leading-relaxed">
+                {currentPacketText || "Ready to stream payload..."}
               </div>
             </div>
           </div>
