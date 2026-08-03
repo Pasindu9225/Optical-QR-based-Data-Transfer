@@ -240,7 +240,7 @@ export default function TransmitPage() {
           await QRCode.toCanvas(canvasRef.current, packetString, {
             errorCorrectionLevel: "L",
             margin: 2,
-            width: 400,
+            scale: 8,
             color: {
               dark: "#000000",
               light: "#FFFFFF",
@@ -299,7 +299,7 @@ export default function TransmitPage() {
     QRCode.toCanvas(canvasRef.current, packetString, {
       errorCorrectionLevel: "L",
       margin: 2,
-      width: 400,
+      scale: 8,
       color: {
         dark: "#000000",
         light: "#FFFFFF",
@@ -403,10 +403,10 @@ export default function TransmitPage() {
               </div>
 
               {/* Stark White High-Contrast QR Canvas Container */}
-              <div className="bg-white rounded-2xl p-4 shadow-2xl mx-auto w-full max-w-[360px] aspect-square flex items-center justify-center border border-white/20">
+              <div className="bg-white rounded-3xl p-5 shadow-2xl mx-auto w-full max-w-[360px] aspect-square flex items-center justify-center border border-white/20 overflow-hidden">
                 <canvas
                   ref={canvasRef}
-                  className="w-full h-full block rounded-lg"
+                  className="w-full h-full block object-contain"
                 />
               </div>
 
