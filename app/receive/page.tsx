@@ -17,6 +17,11 @@ import {
   VolumeX,
   FileCheck,
   AlertCircle,
+  Eye,
+  FileText,
+  Music,
+  Film,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function ReceivePage() {
@@ -34,6 +39,10 @@ export default function ReceivePage() {
   const [isComplete, setIsComplete] = useState<boolean>(false);
   const [fileMeta, setFileMeta] = useState<FileMetadata | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+
+  // File Preview State
+  const [fileCategory, setFileCategory] = useState<"image" | "text" | "audio" | "video" | "other">("other");
+  const [textPreview, setTextPreview] = useState<string | null>(null);
 
   // Performance stats
   const [scanFps, setScanFps] = useState<number>(0);
@@ -70,7 +79,7 @@ export default function ReceivePage() {
       osc.start();
       osc.stop(ctx.currentTime + 0.1);
     } catch {
-      // Audio context may be restricted by browser policy
+      // Audio context policy
     }
   }, []);
 
@@ -82,7 +91,6 @@ export default function ReceivePage() {
         const videoInputs = devices.filter((d) => d.kind === "videoinput");
         setCameraDevices(videoInputs);
         if (videoInputs.length > 0) {
-          // Prefer environment / rear camera
           const backCamera = videoInputs.find((d) =>
             d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("environment")
           );
@@ -155,7 +163,6 @@ export default function ReceivePage() {
           if (qrCode && qrCode.data) {
             const rawData = qrCode.data;
 
-            // Avoid re-ingesting exact same frame in rapid succession
             if (rawData !== lastScannedText || timestamp - lastPacketTimeRef.current > 150) {
               lastPacketTimeRef.current = timestamp;
               setLastScannedText(rawData);
@@ -182,7 +189,6 @@ export default function ReceivePage() {
               if (startTimeRef.current) {
                 const elapsedSeconds = (timestamp - startTimeRef.current) / 1000;
                 if (elapsedSeconds > 0) {
-                  // Rough estimation based on payload size
                   const totalBytes = decoder.decodedBlocks.size * 300;
                   bytesReceivedRef.current = totalBytes;
                   setTransferSpeed(Math.round((totalBytes / 1024) / elapsedSeconds));
@@ -200,6 +206,23 @@ export default function ReceivePage() {
                   setFileMeta(result.metadata);
                   const url = URL.createObjectURL(result.blob);
                   setDownloadUrl(url);
+
+                  // Detect preview category
+                  const mime = result.metadata.type.toLowerCase();
+                  const name = result.metadata.name.toLowerCase();
+
+                  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/.test(name)) {
+                    setFileCategory("image");
+                  } else if (mime.startsWith("text/") || /\.(txt|json|md|csv|html|xml|js|ts|css)$/.test(name)) {
+                    setFileCategory("text");
+                    result.blob.text().then((txt) => setTextPreview(txt.slice(0, 1000)));
+                  } else if (mime.startsWith("audio/") || /\.(mp3|wav|ogg|m4a)$/.test(name)) {
+                    setFileCategory("audio");
+                  } else if (mime.startsWith("video/") || /\.(mp4|webm|mov)$/.test(name)) {
+                    setFileCategory("video");
+                  } else {
+                    setFileCategory("other");
+                  }
 
                   // Automatic anchor download
                   const a = document.createElement("a");
@@ -254,6 +277,8 @@ export default function ReceivePage() {
     setIsComplete(false);
     setFileMeta(null);
     setDownloadUrl(null);
+    setFileCategory("other");
+    setTextPreview(null);
     startTimeRef.current = null;
     setTransferSpeed(0);
     setLastScannedText("");
@@ -332,20 +357,36 @@ export default function ReceivePage() {
                   Scan: {scanFps} FPS
                 </div>
 
+                {/* Completed Viewfinder Overlay */}
                 {isComplete && (
-                  <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4 z-20">
-                    <div className="p-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                      <CheckCircle2 className="w-12 h-12" />
+                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3 z-20 overflow-y-auto">
+                    <div className="p-3 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                      <CheckCircle2 className="w-8 h-8" />
                     </div>
-                    <h3 className="text-xl font-bold text-slate-100">File Received Successfully!</h3>
-                    <p className="text-xs font-mono text-cyan-300">{fileMeta?.name}</p>
+                    <h3 className="text-lg font-bold text-slate-100">File Received & Decoded!</h3>
+                    <p className="text-xs font-mono text-cyan-300 truncate max-w-[280px]">
+                      {fileMeta?.name}
+                    </p>
+
+                    {/* Inline Image / File Preview */}
+                    {fileCategory === "image" && downloadUrl && (
+                      <div className="p-1.5 bg-slate-900 border border-slate-800 rounded-xl max-h-36 overflow-hidden flex items-center justify-center">
+                        {/* eslint-disable-next-html-element-suppression */}
+                        <img
+                          src={downloadUrl}
+                          alt="Preview"
+                          className="max-h-32 object-contain rounded-lg shadow-md"
+                        />
+                      </div>
+                    )}
+
                     {downloadUrl && (
                       <a
                         href={downloadUrl}
                         download={fileMeta?.name || "downloaded-file"}
-                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/30 transition-all"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/30 transition-all"
                       >
-                        <Download className="w-4 h-4" /> Download Reconstructed File
+                        <Download className="w-4 h-4" /> Download File Again
                       </a>
                     )}
                   </div>
@@ -463,23 +504,106 @@ export default function ReceivePage() {
             </div>
           )}
 
-          {/* Completed File Result Card */}
-          {fileMeta && (
-            <div className="glass-card p-5 rounded-xl space-y-3 border border-emerald-500/30 bg-emerald-950/20">
-              <div className="flex items-center gap-2 text-emerald-400 font-medium text-xs">
-                <FileCheck className="w-4 h-4" /> Ready for Download
+          {/* Received File Card with Rich Preview */}
+          {fileMeta && downloadUrl && (
+            <div className="glass-card p-5 rounded-xl space-y-4 border border-emerald-500/40 bg-emerald-950/20 glow-cyan">
+              <div className="flex items-center justify-between border-b border-emerald-800/40 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+                  <FileCheck className="w-4 h-4" /> Received File Ready
+                </div>
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-[10px] font-mono text-emerald-300">
+                  {fileCategory.toUpperCase()}
+                </span>
               </div>
 
-              <div className="space-y-1 text-xs font-mono text-slate-300">
-                <div className="truncate">
-                  <span className="text-slate-500">File: </span>
-                  <span className="text-white font-bold">{fileMeta.name}</span>
+              {/* Rich File Media Preview Display */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-mono">
+                  <Eye className="w-3.5 h-3.5 text-cyan-400" /> File Preview:
                 </div>
-                <div>
-                  <span className="text-slate-500">Size: </span>
+
+                {/* 1. Image Preview */}
+                {fileCategory === "image" && (
+                  <div className="p-2 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex items-center justify-center">
+                    {/* eslint-disable-next-html-element-suppression */}
+                    <img
+                      src={downloadUrl}
+                      alt={fileMeta.name}
+                      className="max-h-56 w-auto object-contain rounded-lg shadow-lg border border-slate-800"
+                    />
+                  </div>
+                )}
+
+                {/* 2. Text / Code Preview */}
+                {fileCategory === "text" && textPreview !== null && (
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mb-1">
+                      <FileText className="w-3 h-3 text-emerald-400" /> Snippet Content:
+                    </div>
+                    <pre className="max-h-40 overflow-y-auto text-[11px] font-mono text-emerald-300 break-all whitespace-pre-wrap">
+                      {textPreview}
+                    </pre>
+                  </div>
+                )}
+
+                {/* 3. Audio Preview */}
+                {fileCategory === "audio" && (
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-indigo-300">
+                      <Music className="w-4 h-4 text-cyan-400" /> Audio Track Player
+                    </div>
+                    <audio controls src={downloadUrl} className="w-full h-9 rounded" />
+                  </div>
+                )}
+
+                {/* 4. Video Preview */}
+                {fileCategory === "video" && (
+                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-2 text-xs text-indigo-300 mb-2">
+                      <Film className="w-4 h-4 text-purple-400" /> Video Player
+                    </div>
+                    <video controls src={downloadUrl} className="w-full max-h-48 rounded-lg object-contain" />
+                  </div>
+                )}
+
+                {/* 5. Generic File Icon Preview */}
+                {fileCategory === "other" && (
+                  <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 flex items-center gap-3">
+                    <div className="p-3 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400">
+                      <ImageIcon className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-0.5 text-xs font-mono">
+                      <div className="text-slate-100 font-bold truncate max-w-[200px]">
+                        {fileMeta.name}
+                      </div>
+                      <div className="text-slate-400">
+                        Type: {fileMeta.type || "binary"}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* File Info Meta */}
+              <div className="space-y-1 text-xs font-mono text-slate-300 pt-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">File Name:</span>
+                  <span className="text-white font-bold truncate max-w-[200px]">{fileMeta.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">File Size:</span>
                   <span>{(fileMeta.size / 1024).toFixed(2)} KB</span>
                 </div>
               </div>
+
+              {/* Download Action Button */}
+              <a
+                href={downloadUrl}
+                download={fileMeta.name}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all"
+              >
+                <Download className="w-4 h-4" /> Save / Download File ({fileMeta.name})
+              </a>
             </div>
           )}
         </div>
